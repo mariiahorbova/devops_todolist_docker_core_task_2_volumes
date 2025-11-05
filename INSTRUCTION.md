@@ -43,16 +43,6 @@ docker ps
 
 You should see the `mysql-container` running.
 
-### Get MySQL Container IP Address
-
-To get the IP address of the MySQL container (needed for app configuration):
-
-```bash
-docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' mysql-container
-```
-
-Alternatively, you can use the container name `mysql-container` as the hostname if both containers are on the same Docker network (see App Container section below).
-
 ### Push MySQL Image to Docker Hub
 
 First, tag the image with your Docker Hub username:
@@ -83,6 +73,31 @@ docker run -d \
 
 ## 2. Application Container Setup
 
+### Update Database Configuration
+
+Before building the application image, you need to update the database configuration in `todolist/settings.py` with the MySQL container's IP address:
+
+1. Get the MySQL container IP address:
+```bash
+docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' mysql-container
+```
+
+2. Open `todolist/settings.py` and replace `<mysql-container-ip>` in the `HOST` field of the `DATABASES` configuration with the actual IP address obtained above.
+
+For example, if the IP is `172.17.0.2`, the configuration should look like:
+```python
+DATABASES = {
+    'default': {
+        'ENGINE': 'mysql.connector.django',
+        'NAME': 'app_db',
+        'USER': 'app_user',
+        'PASSWORD': '1234',
+        'HOST': '172.17.0.2',  # MySQL container IP address
+        'PORT': '',  # Leave this empty to use the default MySQL port (3306).
+    }
+}
+```
+
 ### Build Application Image
 
 Build the TodoList application image:
@@ -93,50 +108,16 @@ docker build -t todoapp:2.0.0 .
 
 ### Run Application Container Connected to MySQL
 
-**Option 1: Using Container IP Address**
-
-First, get the MySQL container IP (as shown above), then run:
+Run the application container:
 
 ```bash
 docker run -d \
   --name todoapp-container \
   -p 8080:8080 \
-  -e DB_HOST=<mysql-container-ip> \
-  -e DB_PORT=3306 \
-  -e DB_NAME=app_db \
-  -e DB_USER=app_user \
-  -e DB_PASSWORD=1234 \
   todoapp:2.0.0
 ```
 
-**Option 2: Using Docker Network (Recommended)**
-
-Create a Docker network and connect both containers:
-
-```bash
-# Create a network
-docker network create todoapp-network
-
-# Run MySQL container on the network
-docker run -d \
-  --name mysql-container \
-  --network todoapp-network \
-  -p 3306:3306 \
-  -v mysql_data:/var/lib/mysql \
-  mysql-local:1.0.0
-
-# Run app container on the same network
-docker run -d \
-  --name todoapp-container \
-  --network todoapp-network \
-  -p 8080:8080 \
-  -e DB_HOST=mysql-container \
-  -e DB_PORT=3306 \
-  -e DB_NAME=app_db \
-  -e DB_USER=app_user \
-  -e DB_PASSWORD=1234 \
-  todoapp:2.0.0
-```
+**Note:** If you restart the MySQL container and its IP address changes, you will need to update `settings.py` with the new IP and rebuild the application image.
 
 ### Verify Application Container is Running
 
@@ -231,8 +212,9 @@ docker volume ls
 
 - Ensure MySQL container is running: `docker ps`
 - Check MySQL container logs: `docker logs mysql-container`
-- Verify DB_HOST environment variable is correct (use container IP or container name if on same network)
-- Ensure both containers can communicate (use Docker network for best results)
+- Verify the IP address in `settings.py` matches the current MySQL container IP (check with `docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' mysql-container`)
+- If the MySQL container IP has changed, update `settings.py` and rebuild the application image
+- Ensure both containers are running and can communicate
 
 ### Port Already in Use
 
